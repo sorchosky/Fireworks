@@ -3,7 +3,17 @@ import { randomHue, randomHueFar } from './palette'
 
 const MAX_PARTICLES = 900
 const MAX_ROCKETS = 8
-const BURST_TYPES: BurstType[] = ['peony', 'willow', 'shimmer', 'colorShift', 'ring', 'crackle']
+const CIRCLE_BURST_TYPES: BurstType[] = ['peony', 'willow', 'shimmer', 'colorShift', 'ring', 'crackle']
+const SHAPE_BURST_TYPES: BurstType[] = ['heart', 'square', 'star']
+// Most fireworks stay round; shapes pop up only now and then.
+const SHAPE_BURST_CHANCE = 0.12
+
+function pickBurstType(): BurstType {
+  if (Math.random() < SHAPE_BURST_CHANCE) {
+    return SHAPE_BURST_TYPES[Math.floor(Math.random() * SHAPE_BURST_TYPES.length)]
+  }
+  return CIRCLE_BURST_TYPES[Math.floor(Math.random() * CIRCLE_BURST_TYPES.length)]
+}
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -12,6 +22,73 @@ function lerp(a: number, b: number, t: number): number {
 function hueDelta(from: number, to: number): number {
   let d = ((to - from + 540) % 360) - 180
   return d
+}
+
+interface Point {
+  x: number
+  y: number
+}
+
+// Outline points for shaped bursts, in unit space centered on the origin.
+// Particles launch toward each point so the burst briefly traces the shape
+// before gravity and drag take over.
+
+function heartOutline(count: number): Point[] {
+  const raw: Point[] = []
+  let maxR = 0
+  for (let i = 0; i < count; i++) {
+    const t = (Math.PI * 2 * i) / count
+    const x = 16 * Math.pow(Math.sin(t), 3)
+    const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))
+    raw.push({ x, y })
+    maxR = Math.max(maxR, Math.hypot(x, y))
+  }
+  return raw.map((p) => ({ x: p.x / maxR, y: p.y / maxR }))
+}
+
+function squareOutline(count: number): Point[] {
+  const pts: Point[] = []
+  for (let i = 0; i < count; i++) {
+    const t = i / count
+    const side = Math.floor(t * 4)
+    const local = (t * 4) % 1
+    switch (side) {
+      case 0:
+        pts.push({ x: -1 + 2 * local, y: -1 })
+        break
+      case 1:
+        pts.push({ x: 1, y: -1 + 2 * local })
+        break
+      case 2:
+        pts.push({ x: 1 - 2 * local, y: 1 })
+        break
+      default:
+        pts.push({ x: -1, y: 1 - 2 * local })
+        break
+    }
+  }
+  return pts
+}
+
+function starOutline(count: number): Point[] {
+  const spikes = 5
+  const outerR = 1
+  const innerR = 0.45
+  const totalVerts = spikes * 2
+  const pts: Point[] = []
+  for (let i = 0; i < count; i++) {
+    const segFloat = (i / count) * totalVerts
+    const segIndex = Math.floor(segFloat) % totalVerts
+    const segFrac = segFloat - Math.floor(segFloat)
+    const r0 = segIndex % 2 === 0 ? outerR : innerR
+    const r1 = (segIndex + 1) % 2 === 0 ? outerR : innerR
+    const a0 = -Math.PI / 2 + (segIndex / totalVerts) * Math.PI * 2
+    const a1 = -Math.PI / 2 + ((segIndex + 1) / totalVerts) * Math.PI * 2
+    const r = lerp(r0, r1, segFrac)
+    const a = lerp(a0, a1, segFrac)
+    pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r })
+  }
+  return pts
 }
 
 export type BurstListener = (x: number, y: number, type: BurstType) => void
@@ -78,7 +155,7 @@ export class FireworksEngine {
       vy: -v0,
       hue: randomHue(),
       trail: [],
-      burstType: BURST_TYPES[Math.floor(Math.random() * BURST_TYPES.length)],
+      burstType: pickBurstType(),
       spawnedAt: performance.now(),
     }
     // Stash gravity/duration via closure-free approach: recompute on the fly using vy sign.
@@ -225,6 +302,60 @@ export class FireworksEngine {
             maxLife: lerp(0.9, 1.3, Math.random()),
             size: lerp(1.6, 2.4, Math.random()),
             sparkle: true,
+          })
+        }
+        break
+      }
+      case 'heart': {
+        const count = Math.round(lerp(70, 100, Math.random()))
+        const speed = lerp(110, 150, Math.random())
+        for (const pt of heartOutline(count)) {
+          push({
+            x: cx,
+            y: cy,
+            vx: pt.x * speed,
+            vy: pt.y * speed,
+            gravity: 130,
+            drag: 0.45,
+            maxLife: lerp(1.0, 1.3, Math.random()),
+            size: lerp(1.8, 2.6, Math.random()),
+            flicker: Math.random() < 0.2,
+          })
+        }
+        break
+      }
+      case 'square': {
+        const count = Math.round(lerp(64, 88, Math.random()))
+        const speed = lerp(85, 115, Math.random())
+        for (const pt of squareOutline(count)) {
+          push({
+            x: cx,
+            y: cy,
+            vx: pt.x * speed,
+            vy: pt.y * speed,
+            gravity: 130,
+            drag: 0.45,
+            maxLife: lerp(1.0, 1.3, Math.random()),
+            size: lerp(1.8, 2.6, Math.random()),
+            flicker: Math.random() < 0.2,
+          })
+        }
+        break
+      }
+      case 'star': {
+        const count = Math.round(lerp(70, 95, Math.random()))
+        const speed = lerp(110, 150, Math.random())
+        for (const pt of starOutline(count)) {
+          push({
+            x: cx,
+            y: cy,
+            vx: pt.x * speed,
+            vy: pt.y * speed,
+            gravity: 130,
+            drag: 0.45,
+            maxLife: lerp(1.0, 1.3, Math.random()),
+            size: lerp(1.8, 2.6, Math.random()),
+            flicker: Math.random() < 0.2,
           })
         }
         break

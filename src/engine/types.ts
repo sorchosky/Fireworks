@@ -1,4 +1,13 @@
-export type BurstType = 'peony' | 'willow' | 'shimmer' | 'colorShift' | 'ring' | 'crackle'
+export type BurstType =
+  | 'peony'
+  | 'willow'
+  | 'shimmer'
+  | 'colorShift'
+  | 'ring'
+  | 'crackle'
+  | 'heart'
+  | 'square'
+  | 'star'
 
 export interface Particle {
   x: number

@@ -135,5 +135,11 @@ export function playBurstSound(type: BurstType) {
       playBoom(context, masterGain, 0.35)
       playCrackle(context, masterGain, 0.7)
       break
+    case 'heart':
+    case 'square':
+    case 'star':
+      playBoom(context, masterGain, 0.7)
+      playCrackle(context, masterGain, 0.6)
+      break
   }
 }

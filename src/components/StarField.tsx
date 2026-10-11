@@ -1,15 +1,18 @@
 import { useMemo, type CSSProperties } from 'react'
+import { PIXEL } from '../engine/pixel'
 
 interface Star {
   x: number
   y: number
   size: number
   baseOpacity: number
+  sparkle: boolean
   duration: number
   delay: number
 }
 
 const STAR_COUNT = 45
+const SPARKLE_COUNT = 5
 
 function makeStars(): Star[] {
   const stars: Star[] = []
@@ -17,9 +20,23 @@ function makeStars(): Star[] {
     stars.push({
       x: Math.random() * 100,
       y: Math.random() * 60,
-      size: 1 + Math.random() * 1.6,
+      // A few brighter stars are two art pixels wide.
+      size: Math.random() < 0.15 ? PIXEL * 2 : PIXEL,
       baseOpacity: 0.15 + Math.random() * 0.35,
+      sparkle: false,
       duration: 3.5 + Math.random() * 4.5,
+      delay: Math.random() * 5,
+    })
+  }
+  // A handful of brighter cross-shaped stars, kept in the upper sky.
+  for (let i = 0; i < SPARKLE_COUNT; i++) {
+    stars.push({
+      x: 6 + Math.random() * 88,
+      y: 4 + Math.random() * 36,
+      size: PIXEL,
+      baseOpacity: 0.6 + Math.random() * 0.3,
+      sparkle: true,
+      duration: 4 + Math.random() * 4,
       delay: Math.random() * 5,
     })
   }
@@ -34,7 +51,7 @@ export default function StarField() {
       {stars.map((s, i) => (
         <div
           key={i}
-          className="star"
+          className={s.sparkle ? 'star star--sparkle' : 'star'}
           style={
             {
               left: `${s.x}%`,

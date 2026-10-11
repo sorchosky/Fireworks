@@ -1,5 +1,6 @@
 import type { BurstType, Particle, Rocket } from './types'
 import { randomHue, randomHueFar } from './palette'
+import { PIXEL } from './pixel'
 
 const MAX_PARTICLES = 900
 const MAX_ROCKETS = 8
@@ -17,6 +18,14 @@ function pickBurstType(): BurstType {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
+}
+
+// Fades step down in a few flat levels rather than smoothly, like a
+// limited pixel-art palette.
+const ALPHA_STEPS = 6
+
+function stepAlpha(a: number): number {
+  return Math.ceil(a * ALPHA_STEPS) / ALPHA_STEPS
 }
 
 function hueDelta(from: number, to: number): number {
@@ -100,7 +109,8 @@ export class FireworksEngine {
   private particles: Particle[] = []
   private width = 0
   private height = 0
-  private dpr = 1
+  private cols = 0
+  private rows = 0
   private onBurst: BurstListener | null = null
   private groundY = 0
 
@@ -116,14 +126,16 @@ export class FireworksEngine {
   }
 
   resize(cssWidth: number, cssHeight: number) {
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2)
+    // Simulation runs in CSS pixels; the canvas holds one texel per art
+    // pixel and is upscaled with nearest-neighbour sampling.
     this.width = cssWidth
     this.height = cssHeight
-    this.canvas.width = Math.round(cssWidth * this.dpr)
-    this.canvas.height = Math.round(cssHeight * this.dpr)
-    this.canvas.style.width = `${cssWidth}px`
-    this.canvas.style.height = `${cssHeight}px`
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    this.cols = Math.ceil(cssWidth / PIXEL)
+    this.rows = Math.ceil(cssHeight / PIXEL)
+    this.canvas.width = this.cols
+    this.canvas.height = this.rows
+    this.canvas.style.width = `${this.cols * PIXEL}px`
+    this.canvas.style.height = `${this.rows * PIXEL}px`
     // Rockets launch from just above the (approximate) skyline base.
     this.groundY = cssHeight * 0.98
   }
@@ -432,9 +444,49 @@ export class FireworksEngine {
     if (spawned.length) this.particles.push(...spawned)
   }
 
+  // Stepped 1px line between two points in CSS space (Bresenham).
+  private pixelLine(x0: number, y0: number, x1: number, y1: number) {
+    let ax = Math.floor(x0 / PIXEL)
+    let ay = Math.floor(y0 / PIXEL)
+    const bx = Math.floor(x1 / PIXEL)
+    const by = Math.floor(y1 / PIXEL)
+    const dx = Math.abs(bx - ax)
+    const dy = -Math.abs(by - ay)
+    const sx = ax < bx ? 1 : -1
+    const sy = ay < by ? 1 : -1
+    let err = dx + dy
+    for (;;) {
+      this.ctx.fillRect(ax, ay, 1, 1)
+      if (ax === bx && ay === by) break
+      const e2 = 2 * err
+      if (e2 >= dy) {
+        err += dy
+        ax += sx
+      }
+      if (e2 <= dx) {
+        err += dx
+        ay += sy
+      }
+    }
+  }
+
+  // Square core with a dimmer plus-shaped halo, the pixel-art stand-in for a
+  // soft round glow.
+  private spark(x: number, y: number, core: number, color: string, glow: string) {
+    const ctx = this.ctx
+    const px = Math.floor(x / PIXEL)
+    const py = Math.floor(y / PIXEL)
+    ctx.fillStyle = glow
+    ctx.fillRect(px - 1, py, core + 2, core)
+    ctx.fillRect(px, py - 1, core, 1)
+    ctx.fillRect(px, py + core, core, 1)
+    ctx.fillStyle = color
+    ctx.fillRect(px, py, core, core)
+  }
+
   draw() {
     const ctx = this.ctx
-    ctx.clearRect(0, 0, this.width, this.height)
+    ctx.clearRect(0, 0, this.cols, this.rows)
     ctx.globalCompositeOperation = 'lighter'
 
     // Rocket trails + tips
@@ -442,17 +494,10 @@ export class FireworksEngine {
       for (let i = 1; i < r.trail.length; i++) {
         const a = r.trail[i - 1]
         const b = r.trail[i]
-        ctx.strokeStyle = `hsla(${r.hue}, 90%, 70%, ${b.alpha * 0.6})`
-        ctx.lineWidth = 1.6
-        ctx.beginPath()
-        ctx.moveTo(a.x, a.y)
-        ctx.lineTo(b.x, b.y)
-        ctx.stroke()
+        ctx.fillStyle = `hsla(${r.hue}, 90%, 70%, ${stepAlpha(b.alpha * 0.6)})`
+        this.pixelLine(a.x, a.y, b.x, b.y)
       }
-      ctx.fillStyle = `hsla(${r.hue}, 90%, 85%, 0.9)`
-      ctx.beginPath()
-      ctx.arc(r.x, r.y, 2.2, 0, Math.PI * 2)
-      ctx.fill()
+      this.spark(r.x, r.y, 1, `hsla(${r.hue}, 90%, 85%, 0.9)`, `hsla(${r.hue}, 90%, 70%, 0.45)`)
     }
 
     // Particles
@@ -468,24 +513,14 @@ export class FireworksEngine {
         alpha *= 0.55 + Math.random() * 0.45
       }
       if (alpha <= 0.02) continue
+      alpha = stepAlpha(alpha)
 
       if (p.trail) {
-        ctx.strokeStyle = `hsla(${hue}, 95%, 65%, ${alpha})`
-        ctx.lineWidth = p.size
-        ctx.beginPath()
-        ctx.moveTo(p.prevX, p.prevY)
-        ctx.lineTo(p.x, p.y)
-        ctx.stroke()
+        ctx.fillStyle = `hsla(${hue}, 95%, 65%, ${alpha})`
+        this.pixelLine(p.prevX, p.prevY, p.x, p.y)
       } else {
-        ctx.fillStyle = `hsla(${hue}, 95%, 68%, ${alpha * 0.35})`
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2)
-        ctx.fill()
-
-        ctx.fillStyle = `hsla(${hue}, 100%, 82%, ${alpha})`
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
-        ctx.fill()
+        const core = p.size >= 2.4 ? 2 : 1
+        this.spark(p.x, p.y, core, `hsla(${hue}, 100%, 82%, ${alpha})`, `hsla(${hue}, 95%, 68%, ${stepAlpha(alpha * 0.35)})`)
       }
     }
   }

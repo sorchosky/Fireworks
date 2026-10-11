@@ -77,6 +77,14 @@ body {
   will-change: opacity;
 }
 
+.star--sparkle {
+  box-shadow:
+    3px 0 0 rgba(244, 246, 255, 0.45),
+    -3px 0 0 rgba(244, 246, 255, 0.45),
+    0 3px 0 rgba(244, 246, 255, 0.45),
+    0 -3px 0 rgba(244, 246, 255, 0.45);
+}
+
 @keyframes twinkle {
   0%,
   100% {
@@ -100,7 +108,7 @@ body {
   left: 0;
   bottom: 0;
   width: 100%;
-  height: min(130px, 30vh);
+  height: min(180px, 26vh);
   overflow: hidden;
   z-index: 2;
   pointer-events: none;
@@ -113,43 +121,11 @@ body {
   bottom: 0;
 }
 
-.grain {
-  position: absolute;
-  inset: -50%;
-  z-index: 3;
-  pointer-events: none;
-  opacity: 0.07;
-  image-rendering: pixelated;
-  animation: grain-shift 0.6s steps(1) infinite;
-  will-change: transform;
-}
-
-@keyframes grain-shift {
-  0% {
-    transform: translate(0, 0);
-  }
-  25% {
-    transform: translate(-48px, 27px);
-  }
-  50% {
-    transform: translate(33px, -60px);
-  }
-  75% {
-    transform: translate(-21px, -39px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .grain {
-    animation: none;
-  }
-}
-
 .mute-button {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 14px);
   right: calc(env(safe-area-inset-right, 0px) + 14px);
-  z-index: 4;
+  z-index: 3;
   width: 42px;
   height: 42px;
   border-radius: 50%;

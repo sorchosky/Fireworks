@@ -1,4 +1,5 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+import { PIXEL } from '../engine/pixel'
 
 interface Window {
   x: number
@@ -31,7 +32,6 @@ interface Building {
   windows: Window[]
   chimney: Chimney | null
   dormer: Dormer | null
-  cat: boolean
 }
 
 const VIEW_WIDTH = 3000
@@ -39,8 +39,6 @@ const VIEW_HEIGHT = 130
 const BACK_SHADES = ['#1a2440', '#1d2846']
 const FRONT_SHADES = ['#0a0e1c', '#0d1226', '#101632']
 const WARM = '#ffcf8a'
-const CAT_COLOR = '#c9702f'
-const CAT_SCALE = 0.6
 
 function makeWindows(x: number, width: number, wallTop: number, wallHeight: number): Window[] {
   const windows: Window[] = []
@@ -67,10 +65,9 @@ function makeWindows(x: number, width: number, wallTop: number, wallHeight: numb
   return windows
 }
 
-function makeRow(startX: number, endX: number, shades: string[], scale: number, allowCat: boolean): Building[] {
+function makeRow(startX: number, endX: number, shades: string[], scale: number): Building[] {
   const buildings: Building[] = []
   let x = startX
-  let catPlaced = !allowCat
   while (x < endX) {
     const width = (22 + Math.random() * 30) * scale
     const wallHeight = (18 + Math.random() * 34) * scale
@@ -100,128 +97,121 @@ function makeRow(startX: number, endX: number, shades: string[], scale: number, 
       }
     }
 
-    let cat = false
-    if (!catPlaced && scale > 0.9 && Math.random() < 0.06) {
-      cat = true
-      catPlaced = true
-    }
-
-    buildings.push({ x, width, wallHeight, roofHeight, shade, windows, chimney, dormer, cat })
+    buildings.push({ x, width, wallHeight, roofHeight, shade, windows, chimney, dormer })
     x += width - 2
   }
   return buildings
 }
 
 function makeSkyline() {
-  const back = makeRow(-20, VIEW_WIDTH + 20, BACK_SHADES, 0.8, false)
-  const front = makeRow(-20, VIEW_WIDTH + 20, FRONT_SHADES, 1, true)
+  const back = makeRow(-20, VIEW_WIDTH + 20, BACK_SHADES, 0.8)
+  const front = makeRow(-20, VIEW_WIDTH + 20, FRONT_SHADES, 1)
   return { back, front }
 }
 
-function BuildingShape({ b }: { b: Building }) {
+type Span = [number, number] | null
+
+const COLS = Math.ceil(VIEW_WIDTH / PIXEL)
+const ROWS = Math.round(VIEW_HEIGHT / PIXEL)
+
+// Scanline fill on the art-pixel grid. `span` returns the horizontal extent
+// (in view units) of the shape at a given y, so slopes and curves come out
+// stair-stepped instead of anti-aliased.
+function fillRows(ctx: CanvasRenderingContext2D, top: number, bottom: number, span: (y: number) => Span) {
+  const r0 = Math.round(top / PIXEL)
+  const r1 = Math.max(r0 + 1, Math.round(bottom / PIXEL))
+  for (let r = r0; r < r1; r++) {
+    const y = Math.min(bottom, Math.max(top, (r + 0.5) * PIXEL))
+    const s = span(y)
+    if (!s) continue
+    const c0 = Math.round(s[0] / PIXEL)
+    const c1 = Math.max(c0 + 1, Math.round(s[1] / PIXEL))
+    ctx.fillRect(c0, r, c1 - c0, 1)
+  }
+}
+
+function fillRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+  fillRows(ctx, y, y + h, () => [x, x + w])
+}
+
+function fillTriangle(ctx: CanvasRenderingContext2D, left: number, right: number, baseY: number, apexX: number, apexY: number) {
+  fillRows(ctx, apexY, baseY, (y) => {
+    const t = (y - apexY) / (baseY - apexY)
+    return [lerp(apexX, left, t), lerp(apexX, right, t)]
+  })
+}
+
+function fillHalfEllipse(ctx: CanvasRenderingContext2D, cx: number, cy: number, rx: number, ry: number) {
+  fillRows(ctx, cy - ry, cy, (y) => {
+    const dy = (cy - y) / ry
+    const hw = rx * Math.sqrt(Math.max(0, 1 - dy * dy))
+    return hw > 0 ? [cx - hw, cx + hw] : null
+  })
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function drawBuilding(ctx: CanvasRenderingContext2D, b: Building) {
   const wallTop = VIEW_HEIGHT - b.wallHeight
   const roofTop = wallTop - b.roofHeight
   const peakX = b.x + b.width / 2
   const dormerBase = wallTop - b.roofHeight * 0.2
 
-  return (
-    <g>
-      <rect x={b.x} y={wallTop} width={b.width} height={b.wallHeight} fill={b.shade} />
-      <polygon
-        points={`${b.x - 1.5},${wallTop} ${peakX},${roofTop} ${b.x + b.width + 1.5},${wallTop}`}
-        fill={b.shade}
-      />
-      {b.chimney && (
-        <rect
-          x={b.chimney.x}
-          y={wallTop - b.roofHeight * 0.55 - b.chimney.height}
-          width={b.chimney.width}
-          height={b.chimney.height}
-          fill={b.shade}
-        />
-      )}
-      {b.dormer && (
-        <g>
-          <rect
-            x={b.dormer.x}
-            y={dormerBase - b.dormer.wallHeight}
-            width={b.dormer.width}
-            height={b.dormer.wallHeight}
-            fill={b.shade}
-          />
-          <polygon
-            points={`${b.dormer.x - 1},${dormerBase - b.dormer.wallHeight} ${
-              b.dormer.x + b.dormer.width / 2
-            },${dormerBase - b.dormer.wallHeight - b.dormer.roofHeight} ${
-              b.dormer.x + b.dormer.width + 1
-            },${dormerBase - b.dormer.wallHeight}`}
-            fill={b.shade}
-          />
-          <rect
-            x={b.dormer.x + b.dormer.width * 0.25}
-            y={dormerBase - b.dormer.wallHeight * 0.75}
-            width={b.dormer.width * 0.5}
-            height={b.dormer.wallHeight * 0.5}
-            fill={WARM}
-            opacity={0.8}
-          />
-        </g>
-      )}
-      {b.windows.map((w, j) => {
-        if (w.shape === 'arch') {
-          return (
-            <g key={j}>
-              <rect x={w.x} y={w.y + w.h * 0.35} width={w.w} height={w.h * 0.65} fill={WARM} opacity={w.opacity} />
-              <ellipse
-                cx={w.x + w.w / 2}
-                cy={w.y + w.h * 0.35}
-                rx={w.w / 2}
-                ry={w.h * 0.35}
-                fill={WARM}
-                opacity={w.opacity}
-              />
-            </g>
-          )
-        }
-        if (w.shape === 'square') {
-          const size = Math.min(w.w, w.h)
-          return <rect key={j} x={w.x} y={w.y} width={size} height={size} fill={WARM} opacity={w.opacity} />
-        }
-        return <rect key={j} x={w.x} y={w.y} width={w.w} height={w.h} fill={WARM} opacity={w.opacity} />
-      })}
-      {b.cat && (
-        <g
-          fill={CAT_COLOR}
-          transform={`translate(${peakX - 25 * CAT_SCALE}, ${roofTop - 27 * CAT_SCALE}) scale(${CAT_SCALE})`}
-        >
-          <path d="M 20 24 q -3 -1 -2 -4 q 1 -2 3 -1 q 1 -4 6 -4 q 5 0 6.5 4 q 3 0 3.5 3 q 0.3 2 -1.5 2.5 Z" />
-          <circle cx="34" cy="13.5" r="3.6" />
-          <path d="M 31 11 l 1 -3.4 l 1.6 2.6 Z" />
-          <path d="M 34.6 10.2 l 1.4 -3.2 l 1.6 3 Z" />
-          <path d="M 17 18 q -4 -1 -3.5 -5.5 q 2.5 0.5 3.5 5.5 Z" />
-        </g>
-      )}
-    </g>
-  )
+  ctx.globalAlpha = 1
+  ctx.fillStyle = b.shade
+  fillRect(ctx, b.x, wallTop, b.width, b.wallHeight)
+  fillTriangle(ctx, b.x - 1.5, b.x + b.width + 1.5, wallTop, peakX, roofTop)
+  if (b.chimney) {
+    fillRect(ctx, b.chimney.x, wallTop - b.roofHeight * 0.55 - b.chimney.height, b.chimney.width, b.chimney.height)
+  }
+  if (b.dormer) {
+    const d = b.dormer
+    const dWallTop = dormerBase - d.wallHeight
+    fillRect(ctx, d.x, dWallTop, d.width, d.wallHeight)
+    fillTriangle(ctx, d.x - 1, d.x + d.width + 1, dWallTop, d.x + d.width / 2, dWallTop - d.roofHeight)
+    ctx.fillStyle = WARM
+    ctx.globalAlpha = 0.8
+    fillRect(ctx, d.x + d.width * 0.25, dormerBase - d.wallHeight * 0.75, d.width * 0.5, d.wallHeight * 0.5)
+  }
+
+  ctx.fillStyle = WARM
+  for (const w of b.windows) {
+    ctx.globalAlpha = w.opacity
+    if (w.shape === 'arch') {
+      fillRect(ctx, w.x, w.y + w.h * 0.35, w.w, w.h * 0.65)
+      fillHalfEllipse(ctx, w.x + w.w / 2, w.y + w.h * 0.35, w.w / 2, w.h * 0.35)
+    } else if (w.shape === 'square') {
+      const size = Math.min(w.w, w.h)
+      fillRect(ctx, w.x, w.y, size, size)
+    } else {
+      fillRect(ctx, w.x, w.y, w.w, w.h)
+    }
+  }
+  ctx.globalAlpha = 1
 }
 
 export default function CitySkyline() {
   const { back, front } = useMemo(makeSkyline, [])
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, COLS, ROWS)
+    for (const b of back) drawBuilding(ctx, b)
+    for (const b of front) drawBuilding(ctx, b)
+  }, [back, front])
 
   return (
     <div className="city-skyline" aria-hidden="true">
-      <svg
-        width={VIEW_WIDTH}
-        height={VIEW_HEIGHT}
-        viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
-      >
-        {back.map((b, i) => (
-          <BuildingShape key={`back-${i}`} b={b} />
-        ))}
-        {front.map((b, i) => (
-          <BuildingShape key={`front-${i}`} b={b} />
-        ))}
-      </svg>
+      <canvas
+        ref={canvasRef}
+        width={COLS}
+        height={ROWS}
+        style={{ width: COLS * PIXEL, height: ROWS * PIXEL }}
+      />
     </div>
   )
 }

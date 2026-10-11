@@ -1,4 +1,5 @@
 import { useMemo, type CSSProperties } from 'react'
+import { PIXEL } from '../engine/pixel'
 
 interface Star {
   x: number
@@ -17,7 +18,8 @@ function makeStars(): Star[] {
     stars.push({
       x: Math.random() * 100,
       y: Math.random() * 60,
-      size: 1 + Math.random() * 1.6,
+      // A few brighter stars are two art pixels wide.
+      size: Math.random() < 0.15 ? PIXEL * 2 : PIXEL,
       baseOpacity: 0.15 + Math.random() * 0.35,
       duration: 3.5 + Math.random() * 4.5,
       delay: Math.random() * 5,

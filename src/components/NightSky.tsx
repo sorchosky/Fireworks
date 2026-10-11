@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import StarField from './StarField'
 import { PIXEL, bayer, hexToRgb } from '../engine/pixel'
 
-// Same stops as the CSS gradient on .night-sky, which stays as a fallback.
+// Dusk gradient, top to bottom.
 const STOPS: [number, string][] = [
   [0, '#05070f'],
   [0.35, '#070a18'],

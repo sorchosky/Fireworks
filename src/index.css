@@ -18,7 +18,8 @@ body {
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
-  background: #05060f;
+  /* Ground color: iOS Safari tints its toolbar from the page's bottom edge. */
+  background: #070913;
 }
 
 #root {
@@ -38,14 +39,8 @@ body {
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(
-    to bottom,
-    #05070f 0%,
-    #070a18 35%,
-    #131a35 65%,
-    #4a3b52 88%,
-    #c97a5a 100%
-  );
+  /* The sky itself is painted by the dithered canvas in NightSky. */
+  background-color: #070913;
   pointer-events: none;
 }
 
@@ -119,6 +114,17 @@ body {
   position: absolute;
   left: 0;
   bottom: 0;
+}
+
+.ground {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  z-index: 2;
+  background: #070913;
+  pointer-events: none;
 }
 
 .mute-button {

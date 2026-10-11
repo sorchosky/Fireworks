@@ -338,6 +338,7 @@ export default function CitySkyline() {
         height={ROWS}
         style={{ width: COLS * PIXEL, height: ROWS * PIXEL }}
       />
+      <div className="ground" />
     </div>
   )
 }
